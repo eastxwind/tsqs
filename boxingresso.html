@@ -339,3 +339,114 @@
   </div>
 </body>
 </html>
+
+<html>
+  <div class="checkboxbutton">
+  <input id="checkbox_toggle" type="checkbox" class="check">
+<div class="checkbox">
+  <label class="slide" for="checkbox_toggle">
+    <label class="toggle" for="checkbox_toggle"></label>
+    <label class="text1" for="checkbox_toggle">Presencial</label>
+    <label class="text2" for="checkbox_toggle">Online</label>
+  </label>
+</div>
+  </div>
+</html>
+
+
+<style>
+  
+.checkboxbutton {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 0px;
+}
+  
+.checkbox {
+  width: 310px;
+  height: 60px;
+  background-color: #7f7f7f;
+  border-radius: 30px;
+  position: relative;
+  color: white;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#checkbox_toggle {
+  display: none;
+}
+
+.checkbox .toggle {
+  width: 150px;
+  height: 50px;
+  position: absolute;
+  border-radius: 30px;
+  left: 5px;
+  cursor: pointer;
+  background: #2b2c28;
+  transition: 0.4s;
+}
+
+.checkbox .slide {
+  width: 330px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  position: relative;
+}
+
+.checkbox .slide .text1, .checkbox .slide .text2 {
+  font-size: 16px;
+  font-weight: 700;
+  z-index: 100;
+  cursor: pointer;
+  width: 150px;
+  text-align: center;
+}
+
+.check:checked + .checkbox .slide .toggle {
+  transform: translateX(150px);
+  background: #97ffed;
+}
+
+.check:checked + .checkbox .slide {
+  background-color: #d2d7df;
+  color: black;
+}
+</style>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var toggleOndemand = document.getElementById('checkbox_toggle');
+  var ondemand = document.getElementById('ondemand');
+  var presencial = document.querySelectorAll('#starter, #expo, #profissional, #business');
+
+  if (toggleOndemand && ondemand) {
+    console.log('Elementos encontrados: toggleOndemand e ondemand.');
+
+    toggleOndemand.addEventListener('change', function() {
+      // Altera o texto para "On Demand" se o botão estiver ativado
+      if (this.checked) {
+        ondemand.style.display = 'block';
+      } else {
+        ondemand.style.display = 'none';
+      }
+
+      // Alterna a visibilidade dos elementos presenciais
+      var displayValue = this.checked ? 'none' : 'block';
+      presencial.forEach(function(element) {
+        element.style.display = displayValue;
+      });
+    });
+  } else {
+    console.log('Elementos não encontrados: toggleOndemand ou ondemand.');
+  }
+});
+</script>
