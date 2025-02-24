@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ingressos</title>
+  <style type="text/css">
+    @import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@200..800&display=swap');
+
+    .box-ingresso p, .box-ingresso a, .box-ingresso ul li {
+      font-family: "Public Sans", sans-serif;
+      font-optical-sizing: auto;
+      font-weight: 400;
+      font-style: normal;
+    }
+
+    .container-ingresso {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .box-ingresso {
+      color: white;
+      display: flex;
+      width: 315px; /* Largura padrão definida */
+      border: 4px solid #173860;
+      border-radius: 10px;
+      padding-top: 15px;
+      position: relative;
+      flex-direction: column;
+      justify-content: space-between;
+      background-image: url('https://images.squarespace-cdn.com/content/514cb52ae4b0e29595fb3a20/ede9cc35-a3f5-4bd3-85c3-5f1d5697e1f0/abstract-background-design-hd-angel-blue+%284%29.jpg?content-type=image%2Fjpeg');
+      background-position: center;
+      background-size: cover;
+    }
+    @media (max-width: 1365px) {
+  .box-ingresso {
+    width: calc(100% - 40px); /* Ajuste a largura conforme necessário */
+    max-width: 290px; /* Mantém a largura máxima em 315px */
+  }
+}
+     /*
+    .box-ingresso.new::after {
+      content: "NEW!";
+      position: absolute;
+      background-color: orange;
+      top: -18px; 
+      border-radius: 16px;
+      padding: 4px 12px;
+      font-weight: 700;
+      transform: translateX(-50%); 
+      left: 50%;
+      width: fit-content;
+    } 
+    */
+
+.box-ingresso.old::after {
+    position: absolute;
+    background-color: #fff;
+    top: 0;
+    border-radius: 16px;
+    padding: 4px 12px;
+    font-weight: 700;
+    transform: translateX(-50%);
+    left: 50%;
+    color: #fff;
+    white-space: nowrap;
+}
+
+    .destaque {
+      position: absolute;
+      background-color: #ccc;
+      top: -18px; /* Ajuste a posição vertical */
+      border-radius: 16px;
+      padding: 4px 12px;
+      font-weight: 700;
+      transform: translateX(-50%);
+      left: 50%;
+      color: #fff;
+      white-space: nowrap;
+      width: fit-content; /* Ajusta a largura do elemento */
+    }
+
+    .box-ingresso header,
+    .box-ingresso footer {
+      padding: 16px;
+    }
+
+    .box-ingresso header h3 {
+      font-size: 30px;
+      font-weight: 700;
+      text-align: center;
+      padding: 0;
+      margin: 0;
+      font-family: "Chakra Petch", sans-serif;
+      font-weight: 700;
+      font-style: normal;
+    }
+
+    .box-ingresso main {
+      padding: 0 16px 16px 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-grow: 1;
+    }
+
+    .box-ingresso main p.valor::before {
+      font-size: 12px;
+      font-weight: 700;
+      display: block;
+      text-align: center;
+      line-height: 100%;
+    }
+
+    .box-ingresso main p.valor1 {
+      font-size: 12px;
+      line-height: 48px;
+      font-weight: 700;
+      text-align: center;
+      color: #fff; /* Cor do texto */
+      margin: 0; /* Para remover margens padrão */
+      margin-bottom: -21px;
+    }
+
+    .box-ingresso main p.valor {
+      font-size: 40px;
+      line-height: 48px;
+      margin: 0;
+      display: block;
+      text-align: center;
+    }
+
+    .box-ingresso main p.solicite {
+      font-size: 20px;
+      padding: 0 16px;
+      font-weight: 700;
+      text-align: center;
+      margin: 0;
+      display: block;
+    }
+
+    .box-ingresso main a.btn-comprar {
+      border-radius: 24px;
+      font-weight: 700;
+      padding: 12px 16px;
+      display: block;
+      width: fit-content;
+    }
+
+    .box-ingresso#on-demand main a.btn-comprar {
+      background-color: #97ffed;
+      color: #fff;
+    }
+
+    .box-ingresso#starter main a.btn-comprar {
+      background-color: #00d9bf;
+      color: #fff;
+    }
+
+    .box-ingresso#expo main a.btn-comprar {
+      background-color: #2f8dcb;
+      color: #FFF;
+    }
+
+    .box-ingresso#profissional main a.btn-comprar {
+      background-color: #02558e;
+      color: #FFF;
+    }
+
+    .box-ingresso#business main a.btn-comprar {
+      background-color: #666666;
+      color: #FFF;
+    }
+    
+    .box-ingresso#ondemand main a.btn-comprar {
+      background-color: #97ffed;
+      color: #fff;
+    }
+    
+    .box-ingresso#starter, .box-ingresso#expo, .box-ingresso#profissional, .box-ingresso#business{
+   
+    }
+    
+    .box-ingresso#ondemand {
+      display: none;
+}
+    .box-ingresso main p.descricao {
+      font-size: 14px;
+      margin: 0;
+      min-height: 80px;
+      text-align: center;
+    }
+
+.box-ingresso footer {
+    color: #fff;
+    min-height: 335px;
+}
+
+.box-ingresso footer ul {
+    margin: 0 0 0 20px;
+    padding: 0;
+    
+    list-style-image: url('https://images.squarespace-cdn.com/content/514cb52ae4b0e29595fb3a20/40e490b2-067c-47d0-9fe2-3b1312e56458/check-icon.png?content-type=image%2Fpng');
+    list-style-position: outside;
+  }
+
+    .box-ingresso footer ul li {
+      margin: 8px 0;
+      font-size: 14px;
+      line-height: 120%;
+    }
+
+    .box-ingresso footer p.obs {
+      margin-left: 20px;
+      font-size: 14px;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="container-ingresso">
+    <div class="box-ingresso new" id="starter">
+      <header>
+        <h3>STARTER</h3>
+      </header>
+      <main>
+        <p class="descricao">Para você que busca economia.</p>
+        <p class="valor1">A partir de:</p>
+        <p class="valor">R$ 199</p>
+        <a class="btn-comprar" href="https://www.mindthesec.com.br/inscreva-se" target="_blank">Comprar agora</a>
+      </main>
+      <footer>
+        <p><b>Benefícios Starter</b>:</p>
+        <ul>
+          <li>Visita à área de exposição (um dia, sujeito a lotação)</li>
+          <li>Assista ao Keynote de abertura, palestra Neon e Late show</li>
+          <li>Certificado de horas complementares (exclusivo para estudantes, até 30 dias após o término do evento)</li>
+          <li>Credencial reciclável</li>
+        </ul>
+        <div class="footer-fill"></div>  </footer>
+    </div>
+
+    <div class="box-ingresso old" id="expo">
+      <!-- <span class="destaque">ANTIGO VISITANTE</span> -->
+      <header>
+        <h3>EXPO</h3>
+      </header>
+      <main>
+        <p class="descricao">Para visitantes que buscam networking e novas tendências de mercado.</p>
+        <p class="valor1">A partir de:</p>
+        <p class="valor">R$ 499</p>
+        <a class="btn-comprar" href="https://www.mindthesec.com.br/inscreva-se" target="_blank">Comprar agora</a>
+      </main>
+      <footer>
+        <p><b>Benefícios Expo</b>:</p>
+        <ul>
+          <li>Visita à área de exposição durante todos os dias do evento</li>
+          <li>Acesso a todo o conteúdo das trilhas Tendências e Soluções</li>
+          <li>Certificado digital de participação (enviado até 30 dias após o término do evento)</li>
+          <li>Credencial Exclusiva</li>
+          <li>Passaporte para participação nos sorteios</li>
+        </ul>
+        <div class="footer-fill"></div>  </footer>
+    </div>
+
+    <div class="box-ingresso old" id="profissional">
+      <!-- <span class="destaque">ANTIGO CONGRESSISTA</span> -->
+      <header>
+        <h3>PROFESSIONAL</h3>
+      </header>
+      <main>
+        <p class="descricao">Para profissionais que buscam networking qualificado, novas tendências de mercado e conteúdo de ponta com palestras dos principais especialistas nacionais e internacionais.</p>
+        <p class="valor1">A partir de:</p>
+        <p class="valor">R$ 1.499</p>
+        <a class="btn-comprar" href="https://www.mindthesec.com.br/inscreva-se" target="_blank">Comprar agora</a>
+      </main>
+      <footer>
+        <p><b>Benefícios da categoria Expo mais</b>:</p>
+        <ul>
+          <li>Acesso completo ao Congresso com dezenas de palestras, debates e workshops</li>
+          <li>Coffee break exclusivo (manhã e tarde)</li>
+          <li>Acesse todas as palestras do evento por 90 dias*</li>
+        </ul>
+        <p class="obs">* Apenas conteúdos cuja gravação foi autorizada pelo(s) autor(es)</p>
+        <div class="footer-fill"></div>  </footer>
+    </div>
+
+    <div class="box-ingresso new" id="business">
+      <header>
+        <h3>BUSINESS</h3>
+      </header>
+      <main>
+        <p class="descricao">Para executivos que buscam maximizar sua experiência, fazer negócios e ter acesso às principais lideranças do mercado, tudo com conforto, conveniência e praticidade.</p>
+        <p class="solicite">Preço<br>sob consulta</p>
+        <a class="btn-comprar" href="https://www.mindthesec.com.br/business" target="_blank">Fale com comercial</a>
+      </main>
+      <footer>
+        <p><b>Benefícios da categoria Professional mais</b>:</p>
+        <ul>
+          <li>Acesso ao coquetel pré-evento com palestrantes e principais lideranças do mercado (Mind The Sec Club)</li>
+          <li>Kit de produtos oficiais</li>
+          <li>Acesso exclusivo ao lounge do Mind The Sec Club</li>
+          <li>Chapelaria exclusiva inclusa</li>
+          <li>Estacionamento incluso</li>
+          <li>Credencial especial</li>
+          <li>Acesso prioritário às palestras</li>
+        </ul>
+        <div class="footer-fill"></div>
+      </footer>
+    </div>
+    <div class="box-ingresso new" id="ondemand">
+      <header>
+        <h3>ON DEMAND</h3>
+      </header>
+      <main>
+        <p class="descricao">Para profissionais que buscam conteúdo altamente qualificado e não podem estar presencialmente no evento.</p>
+        <p class="valor1">A partir de:</p>
+        <p class="valor">R$ 749</p>
+        <a class="btn-comprar" href="https://www.mindthesec.com.br/inscreva-se" target="_blank">Comprar agora</a>
+      </main>
+      <footer>
+        <p><b>Benefícios On Demand</b>:</p>
+        <ul>
+          <li>As palestras estarão disponível até 30 dias após a realização do evento*</li>
+          <li>Acesso as palestras do evento por 12 meses</li>
+          <li>Acesso ao conteúdo de curadoria do Congresso no Mezanino e Keynote Speakers</li>
+          <li>Palestras legendadas em 3 idiomas: inglês, espanhol e português</li>
+</ul>
+<p class="obs">* Apenas conteúdos cuja gravação foi autorizada pelo(s) autor(es)</p>
+        <div class="footer-fill"></div>  </footer>
+    </div>
+  </div>
+</body>
+</html>
