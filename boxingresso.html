@@ -7,7 +7,7 @@
   <style>
     *{box-sizing:border-box}
     html,body{height:100%;margin:0}
-    body{background:#0b0b0c;color:#e9e9ef;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Arial}
+    body{background:#0b0b0c;color:#e9e9ef;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Arial;overscroll-behavior:none}
     .viewer{position:fixed;inset:0;overflow:hidden;display:grid;place-items:center}
     .stage{width:100%;height:100%}
     svg{width:100%;height:100%;display:block;background:#111;touch-action:none}
@@ -29,8 +29,10 @@
     (function(){
       const SVG_PATH = "MTS25+MK+MAPA+FINAL+(1).svg";
       const stage = document.getElementById('stage');
+      const PAN_SPEED = 2.4;
+      const PINCH_ACCEL = 1.12;
       let svg=null;
-      let contentBox={x:0,y:0,width:4961,height:3508};
+      const contentBox={x:0,y:0,width:4961,height:3508};
       let curBox={...contentBox};
       let raf=false;
 
@@ -45,13 +47,32 @@
         svg.style.height='100%';
         stage.innerHTML='';
         stage.appendChild(svg);
-        curBox={...contentBox};
-        apply();
+        resetContain();
         bind();
       }).catch(e=>{stage.innerHTML='<p style="color:#f88">Erro ao carregar</p>'});
 
       function apply(){ svg.setAttribute('viewBox',`${curBox.x} ${curBox.y} ${curBox.width} ${curBox.height}`); raf=false }
       function schedule(){ if(!raf){ raf=true; requestAnimationFrame(apply) } }
+
+      function resetContain(){
+        const vw=stage.clientWidth, vh=stage.clientHeight;
+        const arV=vw/vh, arC=contentBox.width/contentBox.height;
+        if(arV>arC){
+          const w=contentBox.height*arV;
+          curBox.width=w;
+          curBox.height=contentBox.height;
+          curBox.x=contentBox.x + (contentBox.width-w)/2;
+          curBox.y=contentBox.y;
+        }else{
+          const h=contentBox.width/arV;
+          curBox.width=contentBox.width;
+          curBox.height=h;
+          curBox.x=contentBox.x;
+          curBox.y=contentBox.y + (contentBox.height-h)/2;
+        }
+        apply();
+      }
+
       function clamp(){
         const minW=contentBox.width/24, maxW=contentBox.width;
         const minH=contentBox.height/24, maxH=contentBox.height;
@@ -62,6 +83,7 @@
         curBox.x=Math.min(maxX,Math.max(minX,curBox.x));
         curBox.y=Math.min(maxY,Math.max(minY,curBox.y));
       }
+
       function clientToSvg(x,y){ const p=svg.createSVGPoint(); p.x=x; p.y=y; return p.matrixTransform(svg.getScreenCTM().inverse()) }
       function zoomAtClient(factor,cx,cy){
         const p=clientToSvg(cx,cy);
@@ -76,26 +98,28 @@
         clamp();
         schedule();
       }
+
       function panPixels(dx,dy){
-        const rect=svg.getBoundingClientRect();
-        const ux=dx*(curBox.width/rect.width);
-        const uy=dy*(curBox.height/rect.height);
+        const rect=stage.getBoundingClientRect();
+        const ux=dx*(curBox.width/rect.width)*PAN_SPEED;
+        const uy=dy*(curBox.height/rect.height)*PAN_SPEED;
         curBox.x-=ux; curBox.y-=uy; clamp(); schedule();
       }
 
       function bind(){
-        svg.addEventListener('wheel',e=>{e.preventDefault(); const f=Math.pow(1.0015,-e.deltaY); zoomAtClient(f,e.clientX,e.clientY)},{passive:false});
+        svg.addEventListener('wheel',e=>{e.preventDefault(); const f=Math.pow(1.002,-e.deltaY); zoomAtClient(f,e.clientX,e.clientY)},{passive:false});
         let mPan=false,last={x:0,y:0};
         svg.addEventListener('mousedown',e=>{if(e.button!==0)return; mPan=true; last={x:e.clientX,y:e.clientY}});
         window.addEventListener('mousemove',e=>{if(!mPan)return; panPixels(e.clientX-last.x,e.clientY-last.y); last={x:e.clientX,y:e.clientY}});
         window.addEventListener('mouseup',()=>{mPan=false});
+
         const active=new Map();
         let pinch=null; let one=null;
         const down=e=>{svg.setPointerCapture(e.pointerId); active.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(active.size===2){const a=[...active.values()]; const c={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2}; pinch={c,dist:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)} } };
         const move=e=>{
           if(!active.has(e.pointerId))return; active.set(e.pointerId,{x:e.clientX,y:e.clientY});
           if(active.size===1&&!pinch){const cur=active.get(e.pointerId); const prev=one||cur; panPixels(cur.x-prev.x,cur.y-prev.y); one={x:cur.x,y:cur.y}}
-          if(active.size===2&&pinch){const a=[...active.values()]; const c={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2}; const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y); const f=d/(pinch.dist||1); zoomAtClient(f,c.x,c.y); pinch={c,dist:d} }
+          if(active.size===2&&pinch){const a=[...active.values()]; const c={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2}; const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y); const raw=d/(pinch.dist||1); const f=Math.pow(raw,PINCH_ACCEL); zoomAtClient(f,c.x,c.y); pinch={c,dist:d} }
           e.preventDefault();
         };
         const up=e=>{active.delete(e.pointerId); if(active.size<2)pinch=null; one=null};
@@ -104,11 +128,14 @@
         svg.addEventListener('pointerup',up,{passive:false});
         svg.addEventListener('pointercancel',up,{passive:false});
         svg.addEventListener('pointerleave',up,{passive:false});
-        document.getElementById('zoomIn').addEventListener('click',()=>{const r=svg.getBoundingClientRect(); zoomAtClient(1.25,r.left+r.width/2,r.top+r.height/2)});
-        document.getElementById('zoomOut').addEventListener('click',()=>{const r=svg.getBoundingClientRect(); zoomAtClient(1/1.25,r.left+r.width/2,r.top+r.height/2)});
-        document.getElementById('reset').addEventListener('click',()=>{curBox={...contentBox}; schedule()});
-        window.addEventListener('keydown',e=>{if(e.key==='+'||(e.key==='='&&(e.ctrlKey||e.metaKey))){e.preventDefault();const r=svg.getBoundingClientRect(); zoomAtClient(1.25,r.left+r.width/2,r.top+r.height/2)} if(e.key==='-'||(e.key==='_'&&(e.ctrlKey||e.metaKey))){e.preventDefault();const r=svg.getBoundingClientRect(); zoomAtClient(1/1.25,r.left+r.width/2,r.top+r.height/2)} if(e.key.toLowerCase()==='r'){e.preventDefault();curBox={...contentBox}; schedule()} });
-        let t; window.addEventListener('resize',()=>{clearTimeout(t); t=setTimeout(()=>{schedule()},80)});
+
+        document.getElementById('zoomIn').addEventListener('click',()=>{const r=stage.getBoundingClientRect(); zoomAtClient(1.3,r.left+r.width/2,r.top+r.height/2)});
+        document.getElementById('zoomOut').addEventListener('click',()=>{const r=stage.getBoundingClientRect(); zoomAtClient(1/1.3,r.left+r.width/2,r.top+r.height/2)});
+        document.getElementById('reset').addEventListener('click',()=>{resetContain()});
+
+        window.addEventListener('keydown',e=>{if(e.key==='+'||(e.key==='='&&(e.ctrlKey||e.metaKey))){e.preventDefault();const r=stage.getBoundingClientRect(); zoomAtClient(1.3,r.left+r.width/2,r.top+r.height/2)} if(e.key==='-'||(e.key==='_'&&(e.ctrlKey||e.metaKey))){e.preventDefault();const r=stage.getBoundingClientRect(); zoomAtClient(1/1.3,r.left+r.width/2,r.top+r.height/2)} if(e.key.toLowerCase()==='r'){e.preventDefault();resetContain()} });
+
+        let t; window.addEventListener('resize',()=>{clearTimeout(t); t=setTimeout(()=>{resetContain()},50)});
       }
     })();
   </script>
