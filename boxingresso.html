@@ -1,92 +1,102 @@
 <!doctype html>
 <html lang="pt-br">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mapa com Zoom</title>
-<style>
-  html, body { height: 100%; margin: 0; }
-  #wrap { width:100%; height:100vh; touch-action: none; background:#111; }
-  #stage { width:100%; height:100%; display:block; background:#222; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mapa com pan & pinch-zoom</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    /* Desativa gestos nativos (scroll/zoom do navegador) dentro da área interativa */
+    #wrap { width: 100%; height: 100vh; touch-action: none; background: #111; }
+    svg { width: 100%; height: 100%; display: block; background: #222; }
+  </style>
 </head>
 <body>
-<div id="wrap">
-  <!-- Defina o viewBox como a dimensão “natural” do mapa (exemplo 5000x3500) -->
-  <svg id="stage" viewBox="0 0 5000 3500" preserveAspectRatio="xMidYMid meet">
-    <!-- Se a “imagem” do mapa é um SVG simples, também pode ser usado como href no <image> -->
-    <!-- Troque o href para o caminho servido pelo GitHub Pages (não blob): /tsqs/MTS25+MK+MAPA+FINAL+(1).svg -->
-    <image id="mapimg" href="MTS25+MK+MAPA+FINAL+(1).svg" x="0" y="0" width="5000" height="3500" />
-  </svg>
-</div>
+  <div id="wrap">
+    <!-- Para 16:9, exemplo 5000 x 2812.5 -->
+    <svg id="stage" viewBox="0 0 5000 2812.5" preserveAspectRatio="xMidYMid meet">
+      <!-- Use a rota do GitHub Pages (não a URL "blob"). Se este HTML estiver no mesmo diretório do SVG no Pages,
+           basta deixar o nome do arquivo. Ajuste width/height para combinar com o viewBox. -->
+      <image id="mapimg" href="MTS25+MK+MAPA+FINAL+(1).svg" x="0" y="0" width="5000" height="2812.5" />
+    </svg>
+  </div>
 
-<script>
-(function(){
-  const svg = document.getElementById('stage');
-  const vb  = svg.viewBox.baseVal;
+  <script>
+  (function(){
+    const svg = document.getElementById('stage');
+    const vb  = svg.viewBox.baseVal;
 
-  // Limites de zoom: ajuste conforme desejar
-  const MAX_IN = 12, MAX_OUT = 0.75;
-  const baseW = vb.width, baseH = vb.height;
-  const minW = baseW / MAX_IN;
-  const maxW = baseW / MAX_OUT;
+    // Limites de zoom: ajuste conforme desejar
+    const MAX_IN = 12;     // ~12x de zoom in
+    const MAX_OUT = 0.75;  // ~0.75x de zoom out
+    const baseW = vb.width;
+    const minW = baseW / MAX_IN;
+    const maxW = baseW / MAX_OUT;
 
-  let touches = [];
-  let prevDist = 0;
+    let pointers = [];
+    let prevDist = 0;
 
-  function toSvg(x,y){
-    const p = svg.createSVGPoint();
-    p.x=x; p.y=y;
-    return p.matrixTransform(svg.getScreenCTM().inverse());
-  }
-  function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
-
-  svg.addEventListener('pointerdown', e => { svg.setPointerCapture(e.pointerId); touches.push(e); }, {passive:true});
-
-  svg.addEventListener('pointermove', e => {
-    const i = touches.findIndex(t => t.pointerId === e.pointerId);
-    if (i>=0) touches[i] = e;
-
-    if (touches.length === 2) {
-      const p1 = toSvg(touches.clientX, touches.clientY);
-      const p2 = toSvg(touches[4].clientX, touches[4].clientY);
-      const c  = { x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2 };
-      const d  = dist(p1,p2);
-
-      if (!prevDist) { prevDist = d; return; }
-
-      let s = d / prevDist;
-      if (!isFinite(s) || s <= 0) return;
-
-      let newW = vb.width / s;
-      newW = Math.min(Math.max(newW, minW), maxW);
-      const sApplied = vb.width / newW;
-      let newH = vb.height / sApplied;
-
-      vb.x = c.x - newW/2;
-      vb.y = c.y - newH/2;
-      vb.width = newW;
-      vb.height = newH;
-
-      prevDist = d;
-    } else if (touches.length === 1) {
-      // Pan com delta em coordenadas do SVG
-      const prevClientX = e.clientX - e.movementX;
-      const prevClientY = e.clientY - e.movementY;
-      const a = toSvg(prevClientX, prevClientY);
-      const b = toSvg(e.clientX, e.clientY);
-      vb.x += (a.x - b.x);
-      vb.y += (a.y - b.y);
+    function toSvg(x, y){
+      const p = svg.createSVGPoint();
+      p.x = x; p.y = y;
+      return p.matrixTransform(svg.getScreenCTM().inverse());
     }
-  }, {passive:true});
+    function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
 
-  function end(e){
-    touches = touches.filter(t => t.pointerId !== e.pointerId);
-    if (touches.length < 2) prevDist = 0;
-  }
-  svg.addEventListener('pointerup', end, {passive:true});
-  svg.addEventListener('pointercancel', end, {passive:true});
-  svg.addEventListener('pointerleave', end, {passive:true});
-})();
-</script>
+    svg.addEventListener('pointerdown', e => {
+      svg.setPointerCapture(e.pointerId);
+      pointers.push(e);
+    }, { passive: true });
+
+    svg.addEventListener('pointermove', e => {
+      const i = pointers.findIndex(p => p.pointerId === e.pointerId);
+      if (i >= 0) pointers[i] = e;
+
+      if (pointers.length === 2) {
+        // Pinch-zoom: calcule distância e centro em coords do SVG
+        const p1 = toSvg(pointers.clientX, pointers.clientY);
+        const p2 = toSvg(pointers[3].clientX, pointers[3].clientY);
+        const c  = { x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2 };
+        const d  = dist(p1,p2);
+
+        if (!prevDist) { prevDist = d; return; }
+
+        // fator relativo
+        let s = d / prevDist;
+        if (!isFinite(s) || s <= 0) return;
+
+        // novo tamanho do viewBox com clamp
+        let newW = vb.width / s;
+        newW = Math.min(Math.max(newW, minW), maxW);
+        const sApplied = vb.width / newW;  // fator efetivo após clamp
+        const newH = vb.height / sApplied;
+
+        // ancorar no centro do gesto
+        vb.x = c.x - newW / 2;
+        vb.y = c.y - newH / 2;
+        vb.width  = newW;
+        vb.height = newH;
+
+        prevDist = d;
+      } else if (pointers.length === 1) {
+        // Pan com delta em coords do SVG (não depender só de movementX/Y em mobile)
+        const prevClientX = e.clientX - (e.movementX ?? 0);
+        const prevClientY = e.clientY - (e.movementY ?? 0);
+        const a = toSvg(prevClientX, prevClientY);
+        const b = toSvg(e.clientX, e.clientY);
+        vb.x += (a.x - b.x);
+        vb.y += (a.y - b.y);
+      }
+    }, { passive: true });
+
+    function end(e){
+      pointers = pointers.filter(p => p.pointerId !== e.pointerId);
+      if (pointers.length < 2) prevDist = 0;
+    }
+    svg.addEventListener('pointerup', end, { passive: true });
+    svg.addEventListener('pointercancel', end, { passive: true });
+    svg.addEventListener('pointerleave', end, { passive: true });
+  })();
+  </script>
 </body>
 </html>
