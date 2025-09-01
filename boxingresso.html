@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Mapa MTS25 – Visualizadorv2</title>
+  <title>Mapa MTS25 – Visualizador</title>
   <style>
     *{box-sizing:border-box}
     html,body{height:100%;margin:0}
@@ -29,8 +29,8 @@
     (function(){
       const SVG_PATH = "MTS25+MK+MAPA+FINAL+(1).svg";
       const stage = document.getElementById('stage');
-      const PAN_SPEED = 2.4;
-      const PINCH_ACCEL = 1.12;
+      const PAN_SPEED = 0.9;
+      const PINCH_ACCEL = 1.08;
       let svg=null;
       const contentBox={x:0,y:0,width:4961,height:3508};
       let curBox={...contentBox};
@@ -47,28 +47,28 @@
         svg.style.height='100%';
         stage.innerHTML='';
         stage.appendChild(svg);
-        resetContain();
+        resetCover();
         bind();
       }).catch(e=>{stage.innerHTML='<p style="color:#f88">Erro ao carregar</p>'});
 
       function apply(){ svg.setAttribute('viewBox',`${curBox.x} ${curBox.y} ${curBox.width} ${curBox.height}`); raf=false }
       function schedule(){ if(!raf){ raf=true; requestAnimationFrame(apply) } }
 
-      function resetContain(){
+      function resetCover(){
         const vw=stage.clientWidth, vh=stage.clientHeight;
         const arV=vw/vh, arC=contentBox.width/contentBox.height;
         if(arV>arC){
-          const w=contentBox.height*arV;
-          curBox.width=w;
-          curBox.height=contentBox.height;
-          curBox.x=contentBox.x + (contentBox.width-w)/2;
-          curBox.y=contentBox.y;
-        }else{
           const h=contentBox.width/arV;
           curBox.width=contentBox.width;
           curBox.height=h;
           curBox.x=contentBox.x;
           curBox.y=contentBox.y + (contentBox.height-h)/2;
+        }else{
+          const w=contentBox.height*arV;
+          curBox.width=w;
+          curBox.height=contentBox.height;
+          curBox.x=contentBox.x + (contentBox.width-w)/2;
+          curBox.y=contentBox.y;
         }
         apply();
       }
@@ -107,7 +107,7 @@
       }
 
       function bind(){
-        svg.addEventListener('wheel',e=>{e.preventDefault(); const f=Math.pow(1.002,-e.deltaY); zoomAtClient(f,e.clientX,e.clientY)},{passive:false});
+        svg.addEventListener('wheel',e=>{e.preventDefault(); const f=Math.pow(1.0018,-e.deltaY); zoomAtClient(f,e.clientX,e.clientY)},{passive:false});
         let mPan=false,last={x:0,y:0};
         svg.addEventListener('mousedown',e=>{if(e.button!==0)return; mPan=true; last={x:e.clientX,y:e.clientY}});
         window.addEventListener('mousemove',e=>{if(!mPan)return; panPixels(e.clientX-last.x,e.clientY-last.y); last={x:e.clientX,y:e.clientY}});
@@ -129,16 +129,15 @@
         svg.addEventListener('pointercancel',up,{passive:false});
         svg.addEventListener('pointerleave',up,{passive:false});
 
-        document.getElementById('zoomIn').addEventListener('click',()=>{const r=stage.getBoundingClientRect(); zoomAtClient(1.3,r.left+r.width/2,r.top+r.height/2)});
-        document.getElementById('zoomOut').addEventListener('click',()=>{const r=stage.getBoundingClientRect(); zoomAtClient(1/1.3,r.left+r.width/2,r.top+r.height/2)});
-        document.getElementById('reset').addEventListener('click',()=>{resetContain()});
+        document.getElementById('zoomIn').addEventListener('click',()=>{const r=stage.getBoundingClientRect(); zoomAtClient(1.25,r.left+r.width/2,r.top+r.height/2)});
+        document.getElementById('zoomOut').addEventListener('click',()=>{const r=stage.getBoundingClientRect(); zoomAtClient(1/1.25,r.left+r.width/2,r.top+r.height/2)});
+        document.getElementById('reset').addEventListener('click',()=>{resetCover()});
 
-        window.addEventListener('keydown',e=>{if(e.key==='+'||(e.key==='='&&(e.ctrlKey||e.metaKey))){e.preventDefault();const r=stage.getBoundingClientRect(); zoomAtClient(1.3,r.left+r.width/2,r.top+r.height/2)} if(e.key==='-'||(e.key==='_'&&(e.ctrlKey||e.metaKey))){e.preventDefault();const r=stage.getBoundingClientRect(); zoomAtClient(1/1.3,r.left+r.width/2,r.top+r.height/2)} if(e.key.toLowerCase()==='r'){e.preventDefault();resetContain()} });
+        window.addEventListener('keydown',e=>{if(e.key==='+'||(e.key==='='&&(e.ctrlKey||e.metaKey))){e.preventDefault();const r=stage.getBoundingClientRect(); zoomAtClient(1.25,r.left+r.width/2,r.top+r.height/2)} if(e.key==='-'||(e.key==='_'&&(e.ctrlKey||e.metaKey))){e.preventDefault();const r=stage.getBoundingClientRect(); zoomAtClient(1/1.25,r.left+r.width/2,r.top+r.height/2)} if(e.key.toLowerCase()==='r'){e.preventDefault();resetCover()} });
 
-        let t; window.addEventListener('resize',()=>{clearTimeout(t); t=setTimeout(()=>{resetContain()},50)});
+        let t; window.addEventListener('resize',()=>{clearTimeout(t); t=setTimeout(()=>{resetCover()},60)});
       }
     })();
   </script>
 </body>
 </html>
-
