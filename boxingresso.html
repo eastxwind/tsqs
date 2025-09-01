@@ -2,21 +2,22 @@
 <html lang="pt-br">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Mapa com pan & pinch-zoom</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Pinch-to-zoom no SVG</title>
   <style>
     html, body { height: 100%; margin: 0; }
-    /* Desativa gestos nativos (scroll/zoom do navegador) dentro da área interativa */
+    /* CRÍTICO: desativa o gesto nativo do navegador, liberando nossos Pointer Events */
     #wrap { width: 100%; height: 100vh; touch-action: none; background: #111; }
     svg { width: 100%; height: 100%; display: block; background: #222; }
+    /* Opcional: evita seleção/acelera toque */
+    * { -webkit-user-select: none; user-select: none; touch-action: none; }
   </style>
 </head>
 <body>
   <div id="wrap">
-    <!-- Para 16:9, exemplo 5000 x 2812.5 -->
+    <!-- Ajuste o viewBox para o tamanho lógico do mapa; se for 16:9, por ex. 5000x2812.5 -->
     <svg id="stage" viewBox="0 0 5000 2812.5" preserveAspectRatio="xMidYMid meet">
-      <!-- Use a rota do GitHub Pages (não a URL "blob"). Se este HTML estiver no mesmo diretório do SVG no Pages,
-           basta deixar o nome do arquivo. Ajuste width/height para combinar com o viewBox. -->
+      <!-- Troque pelo caminho servido pelo GitHub Pages (não use URL “blob” do github.com) -->
       <image id="mapimg" href="MTS25+MK+MAPA+FINAL+(1).svg" x="0" y="0" width="5000" height="2812.5" />
     </svg>
   </div>
@@ -24,18 +25,22 @@
   <script>
   (function(){
     const svg = document.getElementById('stage');
+    if (!('PointerEvent' in window)) {
+      console.warn('Pointer Events indisponíveis, exigidos para pinça.');
+    }
     const vb  = svg.viewBox.baseVal;
 
-    // Limites de zoom: ajuste conforme desejar
-    const MAX_IN = 12;     // ~12x de zoom in
-    const MAX_OUT = 0.75;  // ~0.75x de zoom out
-    const baseW = vb.width;
-    const minW = baseW / MAX_IN;
-    const maxW = baseW / MAX_OUT;
+    // Limites do zoom baseados na largura “natural” do viewBox
+    const BASE_W = vb.width;
+    const MAX_IN = 12;     // ~12x aproxima
+    const MAX_OUT = 0.75;  // ~0.75x afasta
+    const MIN_W = BASE_W / MAX_IN;
+    const MAX_W = BASE_W / MAX_OUT;
 
-    let pointers = [];
-    let prevDist = 0;
+    let pts = [];       // pointers ativos
+    let prevDist = 0;   // distância anterior entre dedos
 
+    // Util: tela -> coords do SVG
     function toSvg(x, y){
       const p = svg.createSVGPoint();
       p.x = x; p.y = y;
@@ -43,43 +48,55 @@
     }
     function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
 
+    // Diagnóstico: mostrar quantos pointers o browser entrega
+    function logPointers(where){
+      // Descomente para depurar no console
+      // console.log(where, 'pointers:', pts.map(p => p.pointerId));
+    }
+
     svg.addEventListener('pointerdown', e => {
+      // Captura para continuar recebendo eventos desse pointer
       svg.setPointerCapture(e.pointerId);
-      pointers.push(e);
+      pts.push(e);
+      logPointers('down');
     }, { passive: true });
 
     svg.addEventListener('pointermove', e => {
-      const i = pointers.findIndex(p => p.pointerId === e.pointerId);
-      if (i >= 0) pointers[i] = e;
+      const i = pts.findIndex(p => p.pointerId === e.pointerId);
+      if (i >= 0) pts[i] = e;
 
-      if (pointers.length === 2) {
-        // Pinch-zoom: calcule distância e centro em coords do SVG
-        const p1 = toSvg(pointers.clientX, pointers.clientY);
-        const p2 = toSvg(pointers[3].clientX, pointers[3].clientY);
+      if (pts.length === 2) {
+        // PINCH: calcule no espaço do SVG
+        const p1 = toSvg(pts.clientX, pts.clientY);
+        const p2 = toSvg(pts[2].clientX, pts[2].clientY);
         const c  = { x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2 };
         const d  = dist(p1,p2);
 
         if (!prevDist) { prevDist = d; return; }
 
-        // fator relativo
+        // fator relativo (quanto a distância mudou)
         let s = d / prevDist;
         if (!isFinite(s) || s <= 0) return;
 
-        // novo tamanho do viewBox com clamp
+        // Ajuste novo tamanho do viewBox (zoom = mudar largura/altura do retângulo)
         let newW = vb.width / s;
-        newW = Math.min(Math.max(newW, minW), maxW);
-        const sApplied = vb.width / newW;  // fator efetivo após clamp
+
+        // Evite clamps agressivos no começo; mantenha amplo para validar gesto
+        // Se quiser, comece SEM clamp e só depois reative:
+        // newW = Math.min(Math.max(newW, MIN_W), MAX_W);
+
+        const sApplied = vb.width / newW;
         const newH = vb.height / sApplied;
 
-        // ancorar no centro do gesto
-        vb.x = c.x - newW / 2;
-        vb.y = c.y - newH / 2;
+        // Ancorar no centro da pinça
+        vb.x = c.x - newW/2;
+        vb.y = c.y - newH/2;
         vb.width  = newW;
         vb.height = newH;
 
         prevDist = d;
-      } else if (pointers.length === 1) {
-        // Pan com delta em coords do SVG (não depender só de movementX/Y em mobile)
+      } else if (pts.length === 1) {
+        // PAN com 1 dedo: compare posição anterior vs atual em coords do SVG
         const prevClientX = e.clientX - (e.movementX ?? 0);
         const prevClientY = e.clientY - (e.movementY ?? 0);
         const a = toSvg(prevClientX, prevClientY);
@@ -90,8 +107,9 @@
     }, { passive: true });
 
     function end(e){
-      pointers = pointers.filter(p => p.pointerId !== e.pointerId);
-      if (pointers.length < 2) prevDist = 0;
+      pts = pts.filter(p => p.pointerId !== e.pointerId);
+      if (pts.length < 2) prevDist = 0;
+      logPointers('end');
     }
     svg.addEventListener('pointerup', end, { passive: true });
     svg.addEventListener('pointercancel', end, { passive: true });
