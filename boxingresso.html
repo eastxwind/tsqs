@@ -4,77 +4,72 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mapa com Zoom</title>
 <style>
-  #wrap { touch-action: none; width: 100%; height: 100vh; margin: 0; }
-  #map  { width: 100%; height: 100%; display: block; }
   html, body { height: 100%; margin: 0; }
+  #wrap { width:100%; height:100vh; touch-action: none; background:#111; }
+  #stage { width:100%; height:100%; display:block; background:#222; }
 </style>
 </head>
 <body>
-  <div id="wrap">
-    <!-- Opção A (recomendada): inline o SVG aqui, substituindo este <svg> pelo conteúdo de MTS25+MK+MAPA+FINAL+(1).svg -->
-    <!-- Se preferir não colar o conteúdo, use a Opção B com <object> e rode o script dentro do documento carregado -->
-    <svg id="map" viewBox="0 0 5000 3500" preserveAspectRatio="xMidYMid meet">
-      <!-- Conteúdo do mapa SVG aqui -->
-    </svg>
-  </div>
+<div id="wrap">
+  <!-- Defina o viewBox como a dimensão “natural” do mapa (exemplo 5000x3500) -->
+  <svg id="stage" viewBox="0 0 5000 3500" preserveAspectRatio="xMidYMid meet">
+    <!-- Se a “imagem” do mapa é um SVG simples, também pode ser usado como href no <image> -->
+    <!-- Troque o href para o caminho servido pelo GitHub Pages (não blob): /tsqs/MTS25+MK+MAPA+FINAL+(1).svg -->
+    <image id="mapimg" href="MTS25+MK+MAPA+FINAL+(1).svg" x="0" y="0" width="5000" height="3500" />
+  </svg>
+</div>
 
 <script>
 (function(){
-  const svg = document.getElementById('map');
-  const vb = svg.viewBox.baseVal;
+  const svg = document.getElementById('stage');
+  const vb  = svg.viewBox.baseVal;
 
-  // Ajuste estes limites conforme sua cena
-  const MAX_IN = 20;   // ~20x zoom in
-  const MAX_OUT = 0.5; // ~0.5x zoom out
-  let baseW = vb.width, baseH = vb.height;
-  let minW = baseW / MAX_IN;
-  let maxW = baseW / MAX_OUT;
+  // Limites de zoom: ajuste conforme desejar
+  const MAX_IN = 12, MAX_OUT = 0.75;
+  const baseW = vb.width, baseH = vb.height;
+  const minW = baseW / MAX_IN;
+  const maxW = baseW / MAX_OUT;
 
-  let pointers = [];
+  let touches = [];
   let prevDist = 0;
 
-  function toSvg(x, y) {
-    const pt = svg.createSVGPoint();
-    pt.x = x; pt.y = y;
-    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  function toSvg(x,y){
+    const p = svg.createSVGPoint();
+    p.x=x; p.y=y;
+    return p.matrixTransform(svg.getScreenCTM().inverse());
   }
   function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
 
-  svg.addEventListener('pointerdown', e => {
-    svg.setPointerCapture(e.pointerId);
-    pointers.push(e);
-  }, { passive: true });
+  svg.addEventListener('pointerdown', e => { svg.setPointerCapture(e.pointerId); touches.push(e); }, {passive:true});
 
   svg.addEventListener('pointermove', e => {
-    const i = pointers.findIndex(p => p.pointerId === e.pointerId);
-    if (i >= 0) pointers[i] = e;
+    const i = touches.findIndex(t => t.pointerId === e.pointerId);
+    if (i>=0) touches[i] = e;
 
-    if (pointers.length === 2) {
-      const p1 = toSvg(pointers.clientX, pointers.clientY);
-      const p2 = toSvg(pointers[13].clientX, pointers[13].clientY);
+    if (touches.length === 2) {
+      const p1 = toSvg(touches.clientX, touches.clientY);
+      const p2 = toSvg(touches[4].clientX, touches[4].clientY);
       const c  = { x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2 };
       const d  = dist(p1,p2);
 
       if (!prevDist) { prevDist = d; return; }
 
-      let s = d / prevDist; // fator relativo
+      let s = d / prevDist;
       if (!isFinite(s) || s <= 0) return;
 
-      // Calcula novo tamanho do viewBox e aplica clamp
       let newW = vb.width / s;
       newW = Math.min(Math.max(newW, minW), maxW);
       const sApplied = vb.width / newW;
       let newH = vb.height / sApplied;
 
-      // Reancora no centro do gesto
       vb.x = c.x - newW/2;
       vb.y = c.y - newH/2;
       vb.width = newW;
       vb.height = newH;
 
       prevDist = d;
-    } else if (pointers.length === 1) {
-      // Pan com um dedo usando delta em espaço SVG
+    } else if (touches.length === 1) {
+      // Pan com delta em coordenadas do SVG
       const prevClientX = e.clientX - e.movementX;
       const prevClientY = e.clientY - e.movementY;
       const a = toSvg(prevClientX, prevClientY);
@@ -82,15 +77,15 @@
       vb.x += (a.x - b.x);
       vb.y += (a.y - b.y);
     }
-  }, { passive: true });
+  }, {passive:true});
 
   function end(e){
-    pointers = pointers.filter(p => p.pointerId !== e.pointerId);
-    if (pointers.length < 2) prevDist = 0;
+    touches = touches.filter(t => t.pointerId !== e.pointerId);
+    if (touches.length < 2) prevDist = 0;
   }
-  svg.addEventListener('pointerup', end, { passive: true });
-  svg.addEventListener('pointercancel', end, { passive: true });
-  svg.addEventListener('pointerleave', end, { passive: true });
+  svg.addEventListener('pointerup', end, {passive:true});
+  svg.addEventListener('pointercancel', end, {passive:true});
+  svg.addEventListener('pointerleave', end, {passive:true});
 })();
 </script>
 </body>
