@@ -5,310 +5,159 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Mapa MTS25 – Zoom & Pan</title>
   <style>
-    :root { --bg:#0b0b0c; --fg:#e9e9ef; --muted:#9aa0a6; }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
-    body { background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji","Segoe UI Emoji"; }
-
-    /* Viewer fills the page */
-    .viewer { position: fixed; inset: 0; overflow: hidden; display: grid; place-items: center; }
-    .stage { width: 100%; height: 100%; }
-
-    /* When SVG loads, it will be 100% x 100% responsive */
-    svg { width: 100%; height: 100%; display: block; background: #111; touch-action: none; }
-
-    /* UI */
-    .hud { position: fixed; right: 12px; top: 12px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
-    .btn { appearance: none; border: 1px solid #2a2a2b; background: #161618; color: var(--fg); padding: 10px 12px; border-radius: 12px; cursor: pointer; backdrop-filter: blur(4px); box-shadow: 0 6px 18px rgba(0,0,0,.35); }
-    .btn:active { transform: translateY(1px); }
-
-    .tooltip { position: fixed; left: 12px; bottom: 12px; color: var(--muted); background: rgba(0,0,0,.35); padding: 8px 10px; border-radius: 10px; border: 1px solid #2a2a2b; backdrop-filter: blur(4px); max-width: 92vw; }
-    .tooltip kbd { font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; background: #222; border: 1px solid #333; border-bottom-width: 2px; padding: 2px 6px; border-radius: 6px; }
+    :root { --bg:#0b0b0c; --fg:#e9e9ef; }
+    * { box-sizing:border-box; }
+    html, body { height:100%; margin:0; }
+    body { background:var(--bg); color:var(--fg); font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Arial; }
+    .viewer { position:fixed; inset:0; overflow:hidden; display:grid; place-items:center; }
+    .stage { width:100%; height:100%; }
+    svg { width:100%; height:100%; display:block; background:#111; touch-action:none; }
+    .hud { position:fixed; right:12px; top:12px; display:flex; flex-direction:column; gap:8px; z-index:10; }
+    .btn { border:1px solid #2a2a2b; background:#161618; color:var(--fg); padding:10px 12px; border-radius:12px; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,.35); }
+    .btn:active { transform:translateY(1px); }
   </style>
 </head>
 <body>
-  <div class="viewer" id="viewer">
+  <div class="viewer">
     <div class="stage" id="stage" aria-label="Visualizador do mapa com zoom e arrastar"></div>
-
     <div class="hud">
-      <button class="btn" id="zoomIn"  title="Zoom in (Ctrl/⌘ +)">＋</button>
-      <button class="btn" id="zoomOut" title="Zoom out (Ctrl/⌘ -)">－</button>
-      <button class="btn" id="reset"   title="Reiniciar (R)">Reset</button>
-    </div>
-
-    <div class="tooltip">
-      Mouse: role a roda para zoom, arraste com botão esquerdo para mover. <br/>
-      Touch: use pinça (2 dedos) para zoom e arraste com 1 dedo para mover.
+      <button class="btn" id="zoomIn"  title="Aproximar (Ctrl/⌘ +)">＋</button>
+      <button class="btn" id="zoomOut" title="Afastar (Ctrl/⌘ -)">－</button>
+      <button class="btn" id="reset"   title="Reiniciar (R)">Reiniciar</button>
     </div>
   </div>
 
   <script>
     (function(){
-      const SVG_PATH = "MTS25+MK+MAPA+FINAL+(1).svg"; // mesmo diretório deste HTML
+      const SVG_PATH = "MTS25+MK+MAPA+FINAL+(1).svg";
       const stage = document.getElementById('stage');
+      const state = { scale:1, minScale:0.4, maxScale:24, translateX:0, translateY:0 };
+      let rootSvg = null;
+      let zoomLayer = null;
+      let rafPending = false;
 
-      // Estado de transformação
-      const state = {
-        scale: 1,
-        minScale: 0.3,
-        maxScale: 20,
-        translateX: 0,
-        translateY: 0
-      };
+      fetch(encodeURI(SVG_PATH)).then(r=>{ if(!r.ok) throw new Error(r.status); return r.text(); }).then(text=>{
+        const doc = new DOMParser().parseFromString(text,'image/svg+xml');
+        const loadedSvg = doc.documentElement;
+        zoomLayer = doc.createElementNS('http://www.w3.org/2000/svg','g');
+        while (loadedSvg.firstChild) zoomLayer.appendChild(loadedSvg.firstChild);
+        loadedSvg.appendChild(zoomLayer);
+        loadedSvg.removeAttribute('width');
+        loadedSvg.removeAttribute('height');
+        loadedSvg.setAttribute('preserveAspectRatio','xMidYMid meet');
+        loadedSvg.style.width = '100%';
+        loadedSvg.style.height = '100%';
+        loadedSvg.style.display = 'block';
+        loadedSvg.style.background = '#111';
+        rootSvg = loadedSvg;
+        stage.innerHTML='';
+        stage.appendChild(rootSvg);
+        fitToView();
+        attachInteractions();
+      }).catch(err=>{ stage.innerHTML = '<p style="color:#f88">Erro ao carregar o SVG: '+ String(err) +'</p>'; });
 
-      let rootSvg = null;      // <svg> carregado do arquivo
-      let zoomLayer = null;    // <g> que receberá transform
-
-      // Carrega o SVG externamente e injeta no DOM para podermos transformá-lo
-      fetch(encodeURI(SVG_PATH))
-        .then(r => {
-          if (!r.ok) throw new Error("Falha ao carregar o SVG: " + r.status);
-          return r.text();
-        })
-        .then(text => {
-          const parser = new DOMParser();
-          const doc = parser.parseFromString(text, 'image/svg+xml');
-          const loadedSvg = doc.documentElement;
-
-          // Cria um wrapper para controlar zoom/pan
-          zoomLayer = doc.createElementNS('http://www.w3.org/2000/svg','g');
-
-          // Move todos os children do SVG original para dentro do wrapper
-          while (loadedSvg.firstChild) {
-            zoomLayer.appendChild(loadedSvg.firstChild);
-          }
-          loadedSvg.appendChild(zoomLayer);
-
-          // Remove width/height fixos para ficar responsivo
-          loadedSvg.removeAttribute('width');
-          loadedSvg.removeAttribute('height');
-          loadedSvg.setAttribute('preserveAspectRatio','xMidYMid meet');
-          loadedSvg.style.width = '100%';
-          loadedSvg.style.height = '100%';
-          loadedSvg.style.display = 'block';
-          loadedSvg.style.background = '#111';
-
-          // Gruda na página
-          rootSvg = loadedSvg;
-          stage.innerHTML = '';
-          stage.appendChild(rootSvg);
-
-          // Ajusta estado inicial para conter no viewport
-          fitToView();
-          attachInteractions();
-        })
-        .catch(err => {
-          stage.innerHTML = '<p style="color:#f88">Erro ao carregar o SVG: '+ String(err) +'</p>';
-          console.error(err);
-        });
-
-      function getBBoxSafe() {
-        try {
-          // BBox real do conteúdo (no espaço do SVG, antes de transform)
-          const temp = zoomLayer.cloneNode(true);
-          const tempSvg = rootSvg.cloneNode();
-          tempSvg.appendChild(temp);
-          document.body.appendChild(tempSvg);
-          const box = temp.getBBox();
-          document.body.removeChild(tempSvg);
-          return box;
-        } catch (e) {
-          // Fallback: usa a viewBox se existir
-          const vb = rootSvg.viewBox && rootSvg.viewBox.baseVal;
-          if (vb) return { x: vb.x, y: vb.y, width: vb.width, height: vb.height };
-          // Último recurso
-          return { x: 0, y: 0, width: rootSvg.clientWidth || 1000, height: rootSvg.clientHeight || 1000 };
-        }
+      function getBBoxFallback(){
+        const vb = rootSvg.viewBox && rootSvg.viewBox.baseVal;
+        if (vb && vb.width && vb.height) return { x:vb.x, y:vb.y, width:vb.width, height:vb.height };
+        return { x:0, y:0, width: rootSvg.clientWidth||1000, height: rootSvg.clientHeight||1000 };
       }
 
-      function fitToView() {
-        if (!rootSvg || !zoomLayer) return;
+      function fitToView(){
+        if(!rootSvg||!zoomLayer) return;
         const vb = rootSvg.viewBox && rootSvg.viewBox.baseVal;
-        if (!vb || !vb.width || !vb.height) {
-          // se não tem viewBox, tentamos inferir do bbox
-          const box = getBBoxSafe();
+        if(!vb || !vb.width || !vb.height){
+          const box = getBBoxFallback();
           rootSvg.setAttribute('viewBox', `${box.x} ${box.y} ${box.width} ${box.height}`);
         }
-        // Reset transform
-        state.scale = 1; state.translateX = 0; state.translateY = 0;
+        const v = rootSvg.viewBox.baseVal;
+        const vw = rootSvg.clientWidth, vh = rootSvg.clientHeight;
+        const kx = vw / v.width, ky = vh / v.height, k = Math.min(kx, ky) * 0.95;
+        state.scale = Math.min(state.maxScale, Math.max(k, state.minScale));
+        state.translateX = (vw - v.width * state.scale)/2 + v.x;
+        state.translateY = (vh - v.height * state.scale)/2 + v.y;
         applyTransform();
-
-        // Ajusta um scale inicial que caiba na tela
-        const vb2 = rootSvg.viewBox.baseVal;
-        const kx = rootSvg.clientWidth  / vb2.width;
-        const ky = rootSvg.clientHeight / vb2.height;
-        const k  = Math.min(kx, ky);
-        // deixa uma margem
-        const initial = Math.max(state.minScale, Math.min(k * 0.95, state.maxScale));
-        zoomAtCenter(initial);
       }
 
-      function applyTransform() {
-        if (!zoomLayer) return;
+      function clampPan(){
+        const v = rootSvg.viewBox.baseVal;
+        const vw = rootSvg.clientWidth, vh = rootSvg.clientHeight;
+        const cw = v.width * state.scale, ch = v.height * state.scale;
+        const minX = vw - cw + v.x, maxX = v.x;
+        const minY = vh - ch + v.y, maxY = v.y;
+        if (cw <= vw) state.translateX = (vw - cw)/2 + v.x; else state.translateX = Math.min(maxX, Math.max(minX, state.translateX));
+        if (ch <= vh) state.translateY = (vh - ch)/2 + v.y; else state.translateY = Math.min(maxY, Math.max(minY, state.translateY));
+      }
+
+      function applyTransform(){
+        clampPan();
         zoomLayer.setAttribute('transform', `translate(${state.translateX} ${state.translateY}) scale(${state.scale})`);
-        updateButtons();
-      }
-
-      function clamp(val, min, max) { return Math.min(max, Math.max(min, val)); }
-
-      function clientToSvgPoint(clientX, clientY) {
-        const pt = rootSvg.createSVGPoint();
-        pt.x = clientX; pt.y = clientY;
-        return pt.matrixTransform(rootSvg.getScreenCTM().inverse());
-      }
-
-      function getZoomMatrix() {
-        // CTM atual do zoomLayer
-        return zoomLayer.getCTM();
-      }
-
-      function clientToContentPoint(clientX, clientY) {
-        const pt = rootSvg.createSVGPoint();
-        pt.x = clientX; pt.y = clientY;
-        const inv = getZoomMatrix().inverse();
-        return pt.matrixTransform(inv);
-      }
-
-      function zoomAtClientPoint(newScale, clientX, clientY) {
-        newScale = clamp(newScale, state.minScale, state.maxScale);
-        const svgPt = clientToSvgPoint(clientX, clientY);      // ponto no espaço do SVG (raiz)
-        const contentPt = clientToContentPoint(clientX, clientY); // ponto no espaço antes do transform
-        // Para manter o mesmo ponto sob o cursor: t = Psvg - s2 * Pcontent
-        state.scale = newScale;
-        state.translateX = svgPt.x - state.scale * contentPt.x;
-        state.translateY = svgPt.y - state.scale * contentPt.y;
-        applyTransform();
-      }
-
-      function zoomAtCenter(newScale) {
-        const rect = rootSvg.getBoundingClientRect();
-        const cx = rect.left + rect.width/2;
-        const cy = rect.top  + rect.height/2;
-        zoomAtClientPoint(newScale, cx, cy);
-      }
-
-      function updateButtons(){
         const zi = document.getElementById('zoomIn');
         const zo = document.getElementById('zoomOut');
         const r  = document.getElementById('reset');
         zi.disabled = state.scale >= state.maxScale - 1e-6;
         zo.disabled = state.scale <= state.minScale + 1e-6;
-        r.disabled  = Math.abs(state.scale - 1) < 1e-4 && Math.abs(state.translateX) < 1e-2 && Math.abs(state.translateY) < 1e-2;
+        r.disabled  = false;
+        rafPending = false;
+      }
+
+      function schedule(){ if(!rafPending){ rafPending = true; requestAnimationFrame(applyTransform); } }
+      function clampScale(s){ return Math.min(state.maxScale, Math.max(state.minScale, s)); }
+
+      function clientToSvgPoint(x,y){ const pt = rootSvg.createSVGPoint(); pt.x=x; pt.y=y; return pt.matrixTransform(rootSvg.getScreenCTM().inverse()); }
+      function getCTM(){ return zoomLayer.getCTM(); }
+      function clientToContentPoint(x,y){ const pt = rootSvg.createSVGPoint(); pt.x=x; pt.y=y; return pt.matrixTransform(getCTM().inverse()); }
+
+      function zoomAtClientPoint(newScale, cx, cy){
+        newScale = clampScale(newScale);
+        const svgPt = clientToSvgPoint(cx, cy);
+        const contentPt = clientToContentPoint(cx, cy);
+        state.scale = newScale;
+        state.translateX = svgPt.x - state.scale * contentPt.x;
+        state.translateY = svgPt.y - state.scale * contentPt.y;
+        schedule();
+      }
+
+      function zoomAtCenter(mult){
+        const rect = rootSvg.getBoundingClientRect();
+        const s = clampScale(state.scale * mult);
+        zoomAtClientPoint(s, rect.left + rect.width/2, rect.top + rect.height/2);
       }
 
       function attachInteractions(){
-        // Wheel (desktop) – zoom no cursor
-        rootSvg.addEventListener('wheel', (e) => {
-          e.preventDefault();
-          const delta = e.deltaY; // positivo = afastar
-          // acelera um pouco no desktop; Ctrl-wheel (trackpad pinch) já manda deltaY grande
-          const scaleFactor = Math.pow(1.0015, -delta);
-          zoomAtClientPoint(state.scale * scaleFactor, e.clientX, e.clientY);
-        }, { passive: false });
+        rootSvg.addEventListener('wheel', (e)=>{ e.preventDefault(); const f = Math.pow(1.002, -e.deltaY); zoomAtClientPoint(state.scale * f, e.clientX, e.clientY); }, {passive:false});
 
-        // Mouse pan (1 botão)
-        let isPanning = false; let lastClient = null;
-        rootSvg.addEventListener('mousedown', (e) => {
-          if (e.button !== 0) return; // apenas botão esquerdo
-          isPanning = true; lastClient = { x: e.clientX, y: e.clientY };
-        });
-        window.addEventListener('mousemove', (e) => {
-          if (!isPanning) return;
-          const dx = e.clientX - lastClient.x;
-          const dy = e.clientY - lastClient.y;
-          lastClient = { x: e.clientX, y: e.clientY };
-          state.translateX += dx;
-          state.translateY += dy;
-          applyTransform();
-        });
-        window.addEventListener('mouseup', () => { isPanning = false; });
+        let isMousePan=false, last={x:0,y:0};
+        rootSvg.addEventListener('mousedown', (e)=>{ if(e.button!==0) return; isMousePan=true; last={x:e.clientX,y:e.clientY}; });
+        window.addEventListener('mousemove', (e)=>{ if(!isMousePan) return; const dx=e.clientX-last.x, dy=e.clientY-last.y; last={x:e.clientX,y:e.clientY}; state.translateX+=dx; state.translateY+=dy; schedule(); });
+        window.addEventListener('mouseup', ()=>{ isMousePan=false; });
 
-        // Pointer events (touch + stylus)
-        const active = new Map(); // pointerId -> {x,y}
-        let start = { scale: 1, translateX: 0, translateY: 0 };
-        let pinchRef = null; // {centerRoot:{x,y}, centerContent:{x,y}, dist:number}
-
-        const onPointerDown = (e) => {
-          rootSvg.setPointerCapture(e.pointerId);
-          active.set(e.pointerId, { x: e.clientX, y: e.clientY });
-          if (active.size === 1) {
-            start = { scale: state.scale, translateX: state.translateX, translateY: state.translateY };
-          }
-          if (active.size === 2) {
-            const pts = [...active.values()];
-            const c = { x: (pts[0].x + pts[1].x)/2, y: (pts[0].y + pts[1].y)/2 };
-            pinchRef = {
-              centerRoot: c,
-              centerContent: clientToContentPoint(c.x, c.y),
-              dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
-              scale0: state.scale
-            };
-          }
-        };
-        const onPointerMove = (e) => {
-          if (!active.has(e.pointerId)) return;
-          active.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-          if (active.size === 1 && !pinchRef) {
-            // Pan com 1 dedo
-            const cur = active.get(e.pointerId);
-            const prev = lastClient || cur;
-            const dx = cur.x - prev.x;
-            const dy = cur.y - prev.y;
-            lastClient = { x: cur.x, y: cur.y };
-            state.translateX += dx;
-            state.translateY += dy;
-            applyTransform();
-          }
-          if (active.size === 2 && pinchRef) {
-            const pts = [...active.values()];
-            const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-            const factor = dist / (pinchRef.dist || 1);
-            const newScale = clamp(pinchRef.scale0 * factor, state.minScale, state.maxScale);
-            const c = pinchRef.centerRoot;
-            // Mantém o centro sob os dedos
-            state.scale = newScale;
-            state.translateX = c.x - state.scale * pinchRef.centerContent.x;
-            state.translateY = c.y - state.scale * pinchRef.centerContent.y;
-            applyTransform();
-          }
+        const active = new Map();
+        let pinch=null; let lastOneFinger=null;
+        const down=(e)=>{ rootSvg.setPointerCapture(e.pointerId); active.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(active.size===2){ const pts=[...active.values()]; const c={x:(pts[0].x+pts[1].x)/2,y:(pts[0].y+pts[1].y)/2}; pinch={centerRoot:c, centerContent:clientToContentPoint(c.x,c.y), dist:Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y), scale0:state.scale}; } };
+        const move=(e)=>{
+          if(!active.has(e.pointerId)) return; active.set(e.pointerId,{x:e.clientX,y:e.clientY});
+          if(active.size===1 && !pinch){ const cur=active.get(e.pointerId); const prev=lastOneFinger||cur; const dx=cur.x-prev.x, dy=cur.y-prev.y; lastOneFinger={x:cur.x,y:cur.y}; state.translateX+=dx; state.translateY+=dy; schedule(); }
+          if(active.size===2 && pinch){ const pts=[...active.values()]; const dist=Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y); const factor=dist/(pinch.dist||1); const newScale=clampScale(pinch.scale0*factor); const c=pinch.centerRoot; state.scale=newScale; state.translateX=c.x - state.scale*pinch.centerContent.x; state.translateY=c.y - state.scale*pinch.centerContent.y; schedule(); }
           e.preventDefault();
         };
-        const onPointerUp = (e) => {
-          active.delete(e.pointerId);
-          if (active.size < 2) pinchRef = null;
-          lastClient = null;
-        };
+        const up=(e)=>{ active.delete(e.pointerId); if(active.size<2) pinch=null; lastOneFinger=null; };
+        rootSvg.addEventListener('pointerdown', down, {passive:false});
+        rootSvg.addEventListener('pointermove', move, {passive:false});
+        rootSvg.addEventListener('pointerup', up, {passive:false});
+        rootSvg.addEventListener('pointercancel', up, {passive:false});
+        rootSvg.addEventListener('pointerleave', up, {passive:false});
 
-        rootSvg.addEventListener('pointerdown', onPointerDown, { passive: false });
-        rootSvg.addEventListener('pointermove', onPointerMove, { passive: false });
-        rootSvg.addEventListener('pointerup', onPointerUp, { passive: false });
-        rootSvg.addEventListener('pointercancel', onPointerUp, { passive: false });
-        rootSvg.addEventListener('pointerleave', onPointerUp, { passive: false });
+        document.getElementById('zoomIn').addEventListener('click', ()=> zoomAtCenter(1.25));
+        document.getElementById('zoomOut').addEventListener('click', ()=> zoomAtCenter(1/1.25));
+        document.getElementById('reset').addEventListener('click', ()=> fitToView());
 
-        // Controles UI
-        document.getElementById('zoomIn').addEventListener('click', () => zoomAtCenter(state.scale * 1.25));
-        document.getElementById('zoomOut').addEventListener('click', () => zoomAtCenter(state.scale / 1.25));
-        document.getElementById('reset').addEventListener('click', () => fitToView());
-
-        // Atalhos
-        window.addEventListener('keydown', (e) => {
-          if (e.key === '+' || (e.key === '=' && (e.ctrlKey||e.metaKey))) { e.preventDefault(); zoomAtCenter(state.scale * 1.25); }
-          if (e.key === '-' || (e.key === '_' && (e.ctrlKey||e.metaKey))) { e.preventDefault(); zoomAtCenter(state.scale / 1.25); }
+        window.addEventListener('keydown', (e)=>{
+          if (e.key === '+' || (e.key === '=' && (e.ctrlKey||e.metaKey))) { e.preventDefault(); zoomAtCenter(1.25); }
+          if (e.key === '-' || (e.key === '_' && (e.ctrlKey||e.metaKey))) { e.preventDefault(); zoomAtCenter(1/1.25); }
           if (e.key.toLowerCase() === 'r') { e.preventDefault(); fitToView(); }
         });
 
-        // Recalcula ao redimensionar
-        let resizeTimer;
-        window.addEventListener('resize', () => {
-          clearTimeout(resizeTimer);
-          resizeTimer = setTimeout(() => {
-            // preserva o centro visual ao mudar o tamanho
-            const rect = rootSvg.getBoundingClientRect();
-            const cx = rect.left + rect.width/2; const cy = rect.top + rect.height/2;
-            zoomAtClientPoint(state.scale, cx, cy);
-          }, 120);
-        });
+        let t; window.addEventListener('resize', ()=>{ clearTimeout(t); t=setTimeout(()=>{ const rect=rootSvg.getBoundingClientRect(); zoomAtClientPoint(state.scale, rect.left+rect.width/2, rect.top+rect.height/2); }, 120); });
       }
     })();
   </script>
