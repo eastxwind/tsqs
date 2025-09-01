@@ -1,120 +1,316 @@
-<!doctype html>
-<html lang="pt-br">
+<!DOCTYPE html>
+<html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <title>Pinch-to-zoom no SVG</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Mapa MTS25 – Zoom & Pan</title>
   <style>
+    :root { --bg:#0b0b0c; --fg:#e9e9ef; --muted:#9aa0a6; }
+    * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
-    /* CRÍTICO: desativa o gesto nativo do navegador, liberando nossos Pointer Events */
-    #wrap { width: 100%; height: 100vh; touch-action: none; background: #111; }
-    svg { width: 100%; height: 100%; display: block; background: #222; }
-    /* Opcional: evita seleção/acelera toque */
-    * { -webkit-user-select: none; user-select: none; touch-action: none; }
+    body { background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji","Segoe UI Emoji"; }
+
+    /* Viewer fills the page */
+    .viewer { position: fixed; inset: 0; overflow: hidden; display: grid; place-items: center; }
+    .stage { width: 100%; height: 100%; }
+
+    /* When SVG loads, it will be 100% x 100% responsive */
+    svg { width: 100%; height: 100%; display: block; background: #111; touch-action: none; }
+
+    /* UI */
+    .hud { position: fixed; right: 12px; top: 12px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+    .btn { appearance: none; border: 1px solid #2a2a2b; background: #161618; color: var(--fg); padding: 10px 12px; border-radius: 12px; cursor: pointer; backdrop-filter: blur(4px); box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+    .btn:active { transform: translateY(1px); }
+
+    .tooltip { position: fixed; left: 12px; bottom: 12px; color: var(--muted); background: rgba(0,0,0,.35); padding: 8px 10px; border-radius: 10px; border: 1px solid #2a2a2b; backdrop-filter: blur(4px); max-width: 92vw; }
+    .tooltip kbd { font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; background: #222; border: 1px solid #333; border-bottom-width: 2px; padding: 2px 6px; border-radius: 6px; }
   </style>
 </head>
 <body>
-  <div id="wrap">
-    <!-- Ajuste o viewBox para o tamanho lógico do mapa; se for 16:9, por ex. 5000x2812.5 -->
-    <svg id="stage" viewBox="0 0 5000 2812.5" preserveAspectRatio="xMidYMid meet">
-      <!-- Troque pelo caminho servido pelo GitHub Pages (não use URL “blob” do github.com) -->
-      <image id="mapimg" href="MTS25+MK+MAPA+FINAL+(1).svg" x="0" y="0" width="5000" height="2812.5" />
-    </svg>
+  <div class="viewer" id="viewer">
+    <div class="stage" id="stage" aria-label="Visualizador do mapa com zoom e arrastar"></div>
+
+    <div class="hud">
+      <button class="btn" id="zoomIn"  title="Zoom in (Ctrl/⌘ +)">＋</button>
+      <button class="btn" id="zoomOut" title="Zoom out (Ctrl/⌘ -)">－</button>
+      <button class="btn" id="reset"   title="Reiniciar (R)">Reset</button>
+    </div>
+
+    <div class="tooltip">
+      Mouse: role a roda para zoom, arraste com botão esquerdo para mover. <br/>
+      Touch: use pinça (2 dedos) para zoom e arraste com 1 dedo para mover.
+    </div>
   </div>
 
   <script>
-  (function(){
-    const svg = document.getElementById('stage');
-    if (!('PointerEvent' in window)) {
-      console.warn('Pointer Events indisponíveis, exigidos para pinça.');
-    }
-    const vb  = svg.viewBox.baseVal;
+    (function(){
+      const SVG_PATH = "MTS25+MK+MAPA+FINAL+(1).svg"; // mesmo diretório deste HTML
+      const stage = document.getElementById('stage');
 
-    // Limites do zoom baseados na largura “natural” do viewBox
-    const BASE_W = vb.width;
-    const MAX_IN = 12;     // ~12x aproxima
-    const MAX_OUT = 0.75;  // ~0.75x afasta
-    const MIN_W = BASE_W / MAX_IN;
-    const MAX_W = BASE_W / MAX_OUT;
+      // Estado de transformação
+      const state = {
+        scale: 1,
+        minScale: 0.3,
+        maxScale: 20,
+        translateX: 0,
+        translateY: 0
+      };
 
-    let pts = [];       // pointers ativos
-    let prevDist = 0;   // distância anterior entre dedos
+      let rootSvg = null;      // <svg> carregado do arquivo
+      let zoomLayer = null;    // <g> que receberá transform
 
-    // Util: tela -> coords do SVG
-    function toSvg(x, y){
-      const p = svg.createSVGPoint();
-      p.x = x; p.y = y;
-      return p.matrixTransform(svg.getScreenCTM().inverse());
-    }
-    function dist(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return Math.hypot(dx,dy); }
+      // Carrega o SVG externamente e injeta no DOM para podermos transformá-lo
+      fetch(encodeURI(SVG_PATH))
+        .then(r => {
+          if (!r.ok) throw new Error("Falha ao carregar o SVG: " + r.status);
+          return r.text();
+        })
+        .then(text => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(text, 'image/svg+xml');
+          const loadedSvg = doc.documentElement;
 
-    // Diagnóstico: mostrar quantos pointers o browser entrega
-    function logPointers(where){
-      // Descomente para depurar no console
-      // console.log(where, 'pointers:', pts.map(p => p.pointerId));
-    }
+          // Cria um wrapper para controlar zoom/pan
+          zoomLayer = doc.createElementNS('http://www.w3.org/2000/svg','g');
 
-    svg.addEventListener('pointerdown', e => {
-      // Captura para continuar recebendo eventos desse pointer
-      svg.setPointerCapture(e.pointerId);
-      pts.push(e);
-      logPointers('down');
-    }, { passive: true });
+          // Move todos os children do SVG original para dentro do wrapper
+          while (loadedSvg.firstChild) {
+            zoomLayer.appendChild(loadedSvg.firstChild);
+          }
+          loadedSvg.appendChild(zoomLayer);
 
-    svg.addEventListener('pointermove', e => {
-      const i = pts.findIndex(p => p.pointerId === e.pointerId);
-      if (i >= 0) pts[i] = e;
+          // Remove width/height fixos para ficar responsivo
+          loadedSvg.removeAttribute('width');
+          loadedSvg.removeAttribute('height');
+          loadedSvg.setAttribute('preserveAspectRatio','xMidYMid meet');
+          loadedSvg.style.width = '100%';
+          loadedSvg.style.height = '100%';
+          loadedSvg.style.display = 'block';
+          loadedSvg.style.background = '#111';
 
-      if (pts.length === 2) {
-        // PINCH: calcule no espaço do SVG
-        const p1 = toSvg(pts.clientX, pts.clientY);
-        const p2 = toSvg(pts[2].clientX, pts[2].clientY);
-        const c  = { x:(p1.x+p2.x)/2, y:(p1.y+p2.y)/2 };
-        const d  = dist(p1,p2);
+          // Gruda na página
+          rootSvg = loadedSvg;
+          stage.innerHTML = '';
+          stage.appendChild(rootSvg);
 
-        if (!prevDist) { prevDist = d; return; }
+          // Ajusta estado inicial para conter no viewport
+          fitToView();
+          attachInteractions();
+        })
+        .catch(err => {
+          stage.innerHTML = '<p style="color:#f88">Erro ao carregar o SVG: '+ String(err) +'</p>';
+          console.error(err);
+        });
 
-        // fator relativo (quanto a distância mudou)
-        let s = d / prevDist;
-        if (!isFinite(s) || s <= 0) return;
-
-        // Ajuste novo tamanho do viewBox (zoom = mudar largura/altura do retângulo)
-        let newW = vb.width / s;
-
-        // Evite clamps agressivos no começo; mantenha amplo para validar gesto
-        // Se quiser, comece SEM clamp e só depois reative:
-        // newW = Math.min(Math.max(newW, MIN_W), MAX_W);
-
-        const sApplied = vb.width / newW;
-        const newH = vb.height / sApplied;
-
-        // Ancorar no centro da pinça
-        vb.x = c.x - newW/2;
-        vb.y = c.y - newH/2;
-        vb.width  = newW;
-        vb.height = newH;
-
-        prevDist = d;
-      } else if (pts.length === 1) {
-        // PAN com 1 dedo: compare posição anterior vs atual em coords do SVG
-        const prevClientX = e.clientX - (e.movementX ?? 0);
-        const prevClientY = e.clientY - (e.movementY ?? 0);
-        const a = toSvg(prevClientX, prevClientY);
-        const b = toSvg(e.clientX, e.clientY);
-        vb.x += (a.x - b.x);
-        vb.y += (a.y - b.y);
+      function getBBoxSafe() {
+        try {
+          // BBox real do conteúdo (no espaço do SVG, antes de transform)
+          const temp = zoomLayer.cloneNode(true);
+          const tempSvg = rootSvg.cloneNode();
+          tempSvg.appendChild(temp);
+          document.body.appendChild(tempSvg);
+          const box = temp.getBBox();
+          document.body.removeChild(tempSvg);
+          return box;
+        } catch (e) {
+          // Fallback: usa a viewBox se existir
+          const vb = rootSvg.viewBox && rootSvg.viewBox.baseVal;
+          if (vb) return { x: vb.x, y: vb.y, width: vb.width, height: vb.height };
+          // Último recurso
+          return { x: 0, y: 0, width: rootSvg.clientWidth || 1000, height: rootSvg.clientHeight || 1000 };
+        }
       }
-    }, { passive: true });
 
-    function end(e){
-      pts = pts.filter(p => p.pointerId !== e.pointerId);
-      if (pts.length < 2) prevDist = 0;
-      logPointers('end');
-    }
-    svg.addEventListener('pointerup', end, { passive: true });
-    svg.addEventListener('pointercancel', end, { passive: true });
-    svg.addEventListener('pointerleave', end, { passive: true });
-  })();
+      function fitToView() {
+        if (!rootSvg || !zoomLayer) return;
+        const vb = rootSvg.viewBox && rootSvg.viewBox.baseVal;
+        if (!vb || !vb.width || !vb.height) {
+          // se não tem viewBox, tentamos inferir do bbox
+          const box = getBBoxSafe();
+          rootSvg.setAttribute('viewBox', `${box.x} ${box.y} ${box.width} ${box.height}`);
+        }
+        // Reset transform
+        state.scale = 1; state.translateX = 0; state.translateY = 0;
+        applyTransform();
+
+        // Ajusta um scale inicial que caiba na tela
+        const vb2 = rootSvg.viewBox.baseVal;
+        const kx = rootSvg.clientWidth  / vb2.width;
+        const ky = rootSvg.clientHeight / vb2.height;
+        const k  = Math.min(kx, ky);
+        // deixa uma margem
+        const initial = Math.max(state.minScale, Math.min(k * 0.95, state.maxScale));
+        zoomAtCenter(initial);
+      }
+
+      function applyTransform() {
+        if (!zoomLayer) return;
+        zoomLayer.setAttribute('transform', `translate(${state.translateX} ${state.translateY}) scale(${state.scale})`);
+        updateButtons();
+      }
+
+      function clamp(val, min, max) { return Math.min(max, Math.max(min, val)); }
+
+      function clientToSvgPoint(clientX, clientY) {
+        const pt = rootSvg.createSVGPoint();
+        pt.x = clientX; pt.y = clientY;
+        return pt.matrixTransform(rootSvg.getScreenCTM().inverse());
+      }
+
+      function getZoomMatrix() {
+        // CTM atual do zoomLayer
+        return zoomLayer.getCTM();
+      }
+
+      function clientToContentPoint(clientX, clientY) {
+        const pt = rootSvg.createSVGPoint();
+        pt.x = clientX; pt.y = clientY;
+        const inv = getZoomMatrix().inverse();
+        return pt.matrixTransform(inv);
+      }
+
+      function zoomAtClientPoint(newScale, clientX, clientY) {
+        newScale = clamp(newScale, state.minScale, state.maxScale);
+        const svgPt = clientToSvgPoint(clientX, clientY);      // ponto no espaço do SVG (raiz)
+        const contentPt = clientToContentPoint(clientX, clientY); // ponto no espaço antes do transform
+        // Para manter o mesmo ponto sob o cursor: t = Psvg - s2 * Pcontent
+        state.scale = newScale;
+        state.translateX = svgPt.x - state.scale * contentPt.x;
+        state.translateY = svgPt.y - state.scale * contentPt.y;
+        applyTransform();
+      }
+
+      function zoomAtCenter(newScale) {
+        const rect = rootSvg.getBoundingClientRect();
+        const cx = rect.left + rect.width/2;
+        const cy = rect.top  + rect.height/2;
+        zoomAtClientPoint(newScale, cx, cy);
+      }
+
+      function updateButtons(){
+        const zi = document.getElementById('zoomIn');
+        const zo = document.getElementById('zoomOut');
+        const r  = document.getElementById('reset');
+        zi.disabled = state.scale >= state.maxScale - 1e-6;
+        zo.disabled = state.scale <= state.minScale + 1e-6;
+        r.disabled  = Math.abs(state.scale - 1) < 1e-4 && Math.abs(state.translateX) < 1e-2 && Math.abs(state.translateY) < 1e-2;
+      }
+
+      function attachInteractions(){
+        // Wheel (desktop) – zoom no cursor
+        rootSvg.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          const delta = e.deltaY; // positivo = afastar
+          // acelera um pouco no desktop; Ctrl-wheel (trackpad pinch) já manda deltaY grande
+          const scaleFactor = Math.pow(1.0015, -delta);
+          zoomAtClientPoint(state.scale * scaleFactor, e.clientX, e.clientY);
+        }, { passive: false });
+
+        // Mouse pan (1 botão)
+        let isPanning = false; let lastClient = null;
+        rootSvg.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return; // apenas botão esquerdo
+          isPanning = true; lastClient = { x: e.clientX, y: e.clientY };
+        });
+        window.addEventListener('mousemove', (e) => {
+          if (!isPanning) return;
+          const dx = e.clientX - lastClient.x;
+          const dy = e.clientY - lastClient.y;
+          lastClient = { x: e.clientX, y: e.clientY };
+          state.translateX += dx;
+          state.translateY += dy;
+          applyTransform();
+        });
+        window.addEventListener('mouseup', () => { isPanning = false; });
+
+        // Pointer events (touch + stylus)
+        const active = new Map(); // pointerId -> {x,y}
+        let start = { scale: 1, translateX: 0, translateY: 0 };
+        let pinchRef = null; // {centerRoot:{x,y}, centerContent:{x,y}, dist:number}
+
+        const onPointerDown = (e) => {
+          rootSvg.setPointerCapture(e.pointerId);
+          active.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          if (active.size === 1) {
+            start = { scale: state.scale, translateX: state.translateX, translateY: state.translateY };
+          }
+          if (active.size === 2) {
+            const pts = [...active.values()];
+            const c = { x: (pts[0].x + pts[1].x)/2, y: (pts[0].y + pts[1].y)/2 };
+            pinchRef = {
+              centerRoot: c,
+              centerContent: clientToContentPoint(c.x, c.y),
+              dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
+              scale0: state.scale
+            };
+          }
+        };
+        const onPointerMove = (e) => {
+          if (!active.has(e.pointerId)) return;
+          active.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+          if (active.size === 1 && !pinchRef) {
+            // Pan com 1 dedo
+            const cur = active.get(e.pointerId);
+            const prev = lastClient || cur;
+            const dx = cur.x - prev.x;
+            const dy = cur.y - prev.y;
+            lastClient = { x: cur.x, y: cur.y };
+            state.translateX += dx;
+            state.translateY += dy;
+            applyTransform();
+          }
+          if (active.size === 2 && pinchRef) {
+            const pts = [...active.values()];
+            const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+            const factor = dist / (pinchRef.dist || 1);
+            const newScale = clamp(pinchRef.scale0 * factor, state.minScale, state.maxScale);
+            const c = pinchRef.centerRoot;
+            // Mantém o centro sob os dedos
+            state.scale = newScale;
+            state.translateX = c.x - state.scale * pinchRef.centerContent.x;
+            state.translateY = c.y - state.scale * pinchRef.centerContent.y;
+            applyTransform();
+          }
+          e.preventDefault();
+        };
+        const onPointerUp = (e) => {
+          active.delete(e.pointerId);
+          if (active.size < 2) pinchRef = null;
+          lastClient = null;
+        };
+
+        rootSvg.addEventListener('pointerdown', onPointerDown, { passive: false });
+        rootSvg.addEventListener('pointermove', onPointerMove, { passive: false });
+        rootSvg.addEventListener('pointerup', onPointerUp, { passive: false });
+        rootSvg.addEventListener('pointercancel', onPointerUp, { passive: false });
+        rootSvg.addEventListener('pointerleave', onPointerUp, { passive: false });
+
+        // Controles UI
+        document.getElementById('zoomIn').addEventListener('click', () => zoomAtCenter(state.scale * 1.25));
+        document.getElementById('zoomOut').addEventListener('click', () => zoomAtCenter(state.scale / 1.25));
+        document.getElementById('reset').addEventListener('click', () => fitToView());
+
+        // Atalhos
+        window.addEventListener('keydown', (e) => {
+          if (e.key === '+' || (e.key === '=' && (e.ctrlKey||e.metaKey))) { e.preventDefault(); zoomAtCenter(state.scale * 1.25); }
+          if (e.key === '-' || (e.key === '_' && (e.ctrlKey||e.metaKey))) { e.preventDefault(); zoomAtCenter(state.scale / 1.25); }
+          if (e.key.toLowerCase() === 'r') { e.preventDefault(); fitToView(); }
+        });
+
+        // Recalcula ao redimensionar
+        let resizeTimer;
+        window.addEventListener('resize', () => {
+          clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(() => {
+            // preserva o centro visual ao mudar o tamanho
+            const rect = rootSvg.getBoundingClientRect();
+            const cx = rect.left + rect.width/2; const cy = rect.top + rect.height/2;
+            zoomAtClientPoint(state.scale, cx, cy);
+          }, 120);
+        });
+      }
+    })();
   </script>
 </body>
 </html>
