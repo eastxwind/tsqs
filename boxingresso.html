@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Mapa MTS25 – Visualizadorv2</title>
+  <title>Mapa MTS25 – Visualizador</title>
   <style>
     *{box-sizing:border-box}
     html,body{height:100%;margin:0}
     body{background:#0b0b0c;color:#e9e9ef;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Arial;overscroll-behavior:none}
-    #stage{position:fixed;left:0;top:0;right:0;bottom:0;overflow:hidden}
+    #stage{position:fixed;inset:0;overflow:hidden}
     svg{position:absolute;inset:0;width:100%;height:100%;display:block;background:#111;touch-action:none}
     .hud{position:fixed;right:12px;top:12px;display:flex;flex-direction:column;gap:8px;z-index:10}
     .btn{border:1px solid #2a2a2b;background:#161618;color:#e9e9ef;padding:10px 12px;border-radius:12px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.35)}
@@ -26,50 +26,73 @@
     (function(){
       const SVG_PATH="MTS25+MK+MAPA+FINAL+(1).svg";
       const stage=document.getElementById('stage');
-      const PAN_SPEED=0.35;
-      const PINCH_ACCEL=1.04;
-      const content={x:0,y:0,w:4961,h:3508};
-      let svg=null; let cur={x:0,y:0,w:content.w,h:content.h}; let raf=false;
+      const PAN_SPEED=0.30;
+      const PINCH_ACCEL=1.05;
+      let svg=null; let layer=null;
+      let content={x:0,y:0,w:0,h:0};
+      let view={x:0,y:0,w:0,h:0};
+      let raf=false;
 
       fetch(encodeURI(SVG_PATH)).then(r=>{if(!r.ok)throw new Error(r.status);return r.text()}).then(t=>{
         const doc=new DOMParser().parseFromString(t,'image/svg+xml');
         svg=doc.documentElement;
+        layer=doc.createElementNS('http://www.w3.org/2000/svg','g');
+        while(svg.firstChild) layer.appendChild(svg.firstChild);
+        svg.appendChild(layer);
         svg.removeAttribute('width');
         svg.removeAttribute('height');
-        svg.setAttribute('viewBox','0 0 4961 3508');
+        const vb=svg.getAttribute('viewBox');
+        if(vb){ const a=vb.trim().split(/\s+/).map(Number); if(a.length===4){ content={x:a[0],y:a[1],w:a[2],h:a[3]}; } }
+        if(!content.w||!content.h){ content={x:0,y:0,w:1190.64,h:841.92}; }
+        svg.setAttribute('viewBox',`${content.x} ${content.y} ${content.w} ${content.h}`);
         svg.setAttribute('preserveAspectRatio','xMidYMid slice');
         stage.innerHTML='';
         stage.appendChild(svg);
-        cur={x:0,y:0,w:content.w,h:content.h};
-        apply();
+        view={...content};
+        fitCover();
         bind();
       }).catch(()=>{stage.innerHTML='<p style="color:#f88">Erro ao carregar</p>'});
 
-      function apply(){ svg.setAttribute('viewBox',`${cur.x} ${cur.y} ${cur.w} ${cur.h}`); raf=false }
+      function apply(){ svg.setAttribute('viewBox',`${view.x} ${view.y} ${view.w} ${view.h}`); raf=false }
       function schedule(){ if(!raf){ raf=true; requestAnimationFrame(apply) } }
+
+      function fitCover(){
+        const vw=stage.clientWidth, vh=stage.clientHeight;
+        const arV=vw/vh, arC=content.w/content.h;
+        if(arV>arC){
+          const h=content.w/arV;
+          view.w=content.w; view.h=h; view.x=content.x; view.y=content.y+(content.h-h)/2;
+        }else{
+          const w=content.h*arV;
+          view.w=w; view.h=content.h; view.x=content.x+(content.w-w)/2; view.y=content.y;
+        }
+        apply();
+      }
+
       function clamp(){
         const minW=content.w/24, maxW=content.w;
         const minH=content.h/24, maxH=content.h;
-        if(cur.w<minW)cur.w=minW; if(cur.w>maxW)cur.w=maxW;
-        if(cur.h<minH)cur.h=minH; if(cur.h>maxH)cur.h=maxH;
-        const minX=content.x, maxX=content.x+content.w-cur.w;
-        const minY=content.y, maxY=content.y+content.h-cur.h;
-        if(cur.x<minX)cur.x=minX; if(cur.x>maxX)cur.x=maxX;
-        if(cur.y<minY)cur.y=minY; if(cur.y>maxY)cur.y=maxY;
+        if(view.w<minW)view.w=minW; if(view.w>maxW)view.w=maxW;
+        if(view.h<minH)view.h=minH; if(view.h>maxH)view.h=maxH;
+        const minX=content.x, maxX=content.x+content.w-view.w;
+        const minY=content.y, maxY=content.y+content.h-view.h;
+        if(view.x<minX)view.x=minX; if(view.x>maxX)view.x=maxX;
+        if(view.y<minY)view.y=minY; if(view.y>maxY)view.y=maxY;
       }
+
       function clientToSvg(x,y){ const p=svg.createSVGPoint(); p.x=x; p.y=y; return p.matrixTransform(svg.getScreenCTM().inverse()) }
       function zoomAt(f,cx,cy){
         const p=clientToSvg(cx,cy);
-        const nw=cur.w/f, nh=cur.h/f;
-        const kx=(p.x-cur.x)/cur.w, ky=(p.y-cur.y)/cur.h;
-        cur.x=p.x-kx*nw; cur.y=p.y-ky*nh; cur.w=nw; cur.h=nh;
+        const nw=view.w/f, nh=view.h/f;
+        const kx=(p.x-view.x)/view.w, ky=(p.y-view.y)/view.h;
+        view.x=p.x-kx*nw; view.y=p.y-ky*nh; view.w=nw; view.h=nh;
         clamp(); schedule();
       }
       function pan(dx,dy){
         const rect=stage.getBoundingClientRect();
-        const ux=dx*(cur.w/rect.width)*PAN_SPEED;
-        const uy=dy*(cur.h/rect.height)*PAN_SPEED;
-        cur.x-=ux; cur.y-=uy; clamp(); schedule();
+        const ux=dx*(view.w/rect.width)*PAN_SPEED;
+        const uy=dy*(view.h/rect.height)*PAN_SPEED;
+        view.x-=ux; view.y-=uy; clamp(); schedule();
       }
 
       function bind(){
@@ -79,7 +102,7 @@
         window.addEventListener('mousemove',e=>{if(!m)return; pan(e.clientX-last.x,e.clientY-last.y); last={x:e.clientX,y:e.clientY}});
         window.addEventListener('mouseup',()=>{m=false});
         const active=new Map(); let pinch=null; let one=null;
-        const down=e=>{svg.setPointerCapture(e.pointerId); active.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(active.size===2){const a=[...active.values()]; const c={x:(a[0].x+a[1].x)/2,y:(a[1].y+a[0].y)/2}; pinch={c,dist:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)} } };
+        const down=e=>{svg.setPointerCapture(e.pointerId); active.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(active.size===2){const a=[...active.values()]; const c={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2}; pinch={c,dist:Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)} } };
         const move=e=>{ if(!active.has(e.pointerId))return; active.set(e.pointerId,{x:e.clientX,y:e.clientY});
           if(active.size===1&&!pinch){const curp=active.get(e.pointerId); const prev=one||curp; pan(curp.x-prev.x,curp.y-prev.y); one={x:curp.x,y:curp.y}}
           if(active.size===2&&pinch){const a=[...active.values()]; const c={x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2}; const d=Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y); const raw=d/(pinch.dist||1); const f=Math.pow(raw,PINCH_ACCEL); zoomAt(f,c.x,c.y); pinch={c,dist:d} }
@@ -92,8 +115,8 @@
         svg.addEventListener('pointerleave',up,{passive:false});
         document.getElementById('zoomIn').addEventListener('click',()=>{const r=stage.getBoundingClientRect(); zoomAt(1.25,r.left+r.width/2,r.top+r.height/2)});
         document.getElementById('zoomOut').addEventListener('click',()=>{const r=stage.getBoundingClientRect(); zoomAt(1/1.25,r.left+r.width/2,r.top+r.height/2)});
-        document.getElementById('reset').addEventListener('click',()=>{cur={x:0,y:0,w:content.w,h:content.h}; apply()});
-        window.addEventListener('resize',()=>{cur={x:0,y:0,w:content.w,h:content.h}; apply()});
+        document.getElementById('reset').addEventListener('click',()=>{fitCover()});
+        window.addEventListener('resize',()=>{fitCover()});
       }
     })();
   </script>
