@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>1Mapa MTS25 – Visualizador (WebP)</title>
+  <title>Mapa MTS25 – Visualizador (WebP)</title>
   <style>
     *{box-sizing:border-box}
     html,body{height:100%;margin:0}
@@ -34,7 +34,7 @@
       function apply(){ img.style.transform=`translate(${tx}px,${ty}px) scale(${s})`; raf=false }
       function schedule(){ if(!raf){ raf=true; requestAnimationFrame(apply) } }
       function measure(){ vw=stage.clientWidth; vh=stage.clientHeight; }
-      function fitContain(nudge=1.02){ measure(); const k=Math.min(vw/iw, vh/ih); s0=k; s=k*nudge; const cx=vw/2, cy=vh/2; const ix=iw/2, iy=ih/2; tx=cx - ix*s; ty=cy - iy*s; clamp(); apply(); }
+      function fitContain(){ measure(); const k=Math.min(vw/iw, vh/ih); s0=k; s=k; tx=(vw - iw*s)/2; ty=(vh - ih*s)/2; clamp(); apply(); }
       function clamp(){ const dw=iw*s, dh=ih*s; const pad=Math.max(vw,vh)*EDGE_PAD; if(dw<=vw){ const cx=(vw-dw)/2; tx=Math.max(cx-pad, Math.min(cx+pad, tx)); } else { tx=Math.max(vw-dw-pad, Math.min(pad, tx)); } if(dh<=vh){ const cy=(vh-dh)/2; ty=Math.max(cy-pad, Math.min(cy+pad, ty)); } else { ty=Math.max(vh-dh-pad, Math.min(pad, ty)); } }
       function clientToImage(x,y){ return { x:(x-tx)/s, y:(y-ty)/s }; }
       function zoomAt(newScale, cx, cy){ newScale=Math.max(sMin, Math.min(sMax, newScale)); const p=clientToImage(cx,cy); s=newScale; tx=cx - p.x*s; ty=cy - p.y*s; clamp(); schedule(); }
@@ -58,5 +58,3 @@
   </script>
 </body>
 </html>
-
-
